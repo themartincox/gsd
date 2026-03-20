@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>3D Satellite Tracker — Nottingham &amp; Beyond</title>
+
+  <!-- Tell CesiumJS where its static assets live on the CDN -->
+  <script>window.CESIUM_BASE_URL = 'https://cesium.com/downloads/cesiumjs/releases/1.114/Build/Cesium/';</script>
+
+  <!-- CesiumJS -->
+  <script src="https://cesium.com/downloads/cesiumjs/releases/1.114/Build/Cesium/Cesium.js"></script>
+  <link href="https://cesium.com/downloads/cesiumjs/releases/1.114/Build/Cesium/Widgets/widgets.css" rel="stylesheet">
+
+  <!-- satellite.js — SGP4/SDP4 propagator -->
+  <script src="https://cdn.jsdelivr.net/npm/satellite.js@5.0.0/dist/satellite.min.js"></script>
+
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <!-- ══════════════════════════════ TOP BAR ══════════════════════════════ -->
+  <header id="topbar">
+    <div id="brand">
+      <svg class="brand-svg" viewBox="0 0 32 32" fill="none">
+        <circle cx="16" cy="16" r="2.5" fill="#00d4ff"/>
+        <path d="M16 4 A12 12 0 0 1 28 16" stroke="#00d4ff" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+        <path d="M16 4 A12 12 0 0 0 4 16"  stroke="#00d4ff" stroke-width="1.5" fill="none" stroke-linecap="round" opacity=".4"/>
+        <path d="M4.7 26.3 L27.3 5.7"      stroke="#00d4ff" stroke-width="1.2" opacity=".6"/>
+        <circle cx="8"  cy="22" r="1.5" fill="#00ff88"/>
+        <circle cx="24" cy="10" r="1"   fill="#ffd700" opacity=".8"/>
+      </svg>
+      <span class="brand-text">SATELLITE TRACKER <em>3D</em></span>
+    </div>
+
+    <div id="live-stats">
+      <div class="stat-chip" id="chip-loaded">
+        <span class="dot cyan"></span>
+        <span id="n-loaded">0</span> satellites
+      </div>
+      <div class="stat-chip" id="chip-overhead">
+        <span class="dot green"></span>
+        <span id="n-overhead">0</span> overhead
+      </div>
+      <div class="stat-chip" id="chip-clock">
+        <span id="utc-clock">--:--:-- UTC</span>
+      </div>
+    </div>
+
+    <div id="topbar-btns">
+      <button class="icon-btn" id="btn-fly-home" title="Fly to observer">⌖</button>
+      <button class="icon-btn" id="btn-night" title="Toggle night-side lighting">☀</button>
+    </div>
+  </header>
+
+  <!-- ═══════════════════════════════ MAIN ════════════════════════════════ -->
+  <div id="main">
+
+    <!-- ── Left sidebar ── -->
+    <aside id="sidebar">
+
+      <!-- Observer Location -->
+      <section class="sb-section">
+        <div class="sb-hdr">
+          <span class="sb-icon">📍</span>
+          <h2>Observer Location</h2>
+        </div>
+        <div class="sb-body">
+          <div class="field-row">
+            <label for="sel-region">Region</label>
+            <select id="sel-region"><option value="">— select —</option></select>
+          </div>
+          <div class="field-row">
+            <label for="sel-city">City</label>
+            <select id="sel-city"><option value="">— select —</option></select>
+          </div>
+          <div class="sep-label">or enter coordinates</div>
+          <div class="coord-row">
+            <input type="number" id="inp-lat" placeholder="Lat" min="-90"  max="90"  step="0.001">
+            <input type="number" id="inp-lon" placeholder="Lon" min="-180" max="180" step="0.001">
+            <button class="btn-sm" id="btn-set-coords">Set</button>
+          </div>
+          <div id="observer-badge"></div>
+        </div>
+      </section>
+
+      <!-- Satellite Groups -->
+      <section class="sb-section">
+        <div class="sb-hdr">
+          <span class="sb-icon">🛰</span>
+          <h2>Satellite Groups</h2>
+        </div>
+        <div class="sb-body" id="group-list">
+          <!-- populated by app.js -->
+        </div>
+      </section>
+
+      <!-- Pass Filters -->
+      <section class="sb-section">
+        <div class="sb-hdr">
+          <span class="sb-icon">⚙</span>
+          <h2>Pass Filters</h2>
+        </div>
+        <div class="sb-body">
+          <div class="slider-row">
+            <label>Min elevation <span class="slider-val" id="v-min-elev">10°</span></label>
+            <input type="range" id="sld-min-elev" min="0" max="60" value="10" step="5">
+          </div>
+          <div class="slider-row">
+            <label>Window <span class="slider-val" id="v-pass-hours">24 h</span></label>
+            <input type="range" id="sld-pass-hours" min="6" max="72" value="24" step="6">
+          </div>
+          <button class="btn-primary" id="btn-predict">
+            <span id="lbl-predict">▶&nbsp;&nbsp;Predict Passes</span>
+            <span id="lbl-progress" style="display:none">
+              <span class="spinner"></span> Computing…
+            </span>
+          </button>
+        </div>
+      </section>
+
+      <!-- Selected satellite (hidden until a satellite is picked) -->
+      <section class="sb-section" id="sec-satinfo" style="display:none">
+        <div class="sb-hdr">
+          <span class="sb-icon">📡</span>
+          <h2>Selected Satellite</h2>
+          <button class="close-x" id="btn-deselect">✕</button>
+        </div>
+        <div class="sb-body" id="satinfo-body"></div>
+      </section>
+
+    </aside>
+
+    <!-- ── CesiumJS Globe ── -->
+    <div id="cesium-container"></div>
+
+    <!-- Hover tooltip (positioned absolutely in JS) -->
+    <div id="hover-tip" style="display:none"></div>
+
+  </div><!-- #main -->
+
+  <!-- ══════════════════════════ PASS TABLE ═══════════════════════════════ -->
+  <div id="pass-panel" class="open">
+    <div id="pass-header">
+      <span id="pass-summary">No passes computed — load satellites and click Predict Passes</span>
+      <div class="pass-legend">
+        <span class="leg-item hi">● High &gt;45°</span>
+        <span class="leg-item mid">● Medium 20–45°</span>
+        <span class="leg-item lo">● Low &lt;20°</span>
+      </div>
+      <button class="icon-btn" id="btn-toggle-passes" title="Toggle pass table">⌄</button>
+    </div>
+    <div id="pass-scroll">
+      <table id="pass-table">
+        <thead>
+          <tr>
+            <th class="col-name">Satellite</th>
+            <th class="col-cat">Category</th>
+            <th class="col-time">AOS (local)</th>
+            <th class="col-el">Max El</th>
+            <th class="col-time">LOS (local)</th>
+            <th class="col-dur">Duration</th>
+            <th class="col-az">Az @ Max</th>
+            <th class="col-vis">Visibility</th>
+          </tr>
+        </thead>
+        <tbody id="pass-tbody">
+          <tr class="empty-row"><td colspan="8">No passes computed</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
