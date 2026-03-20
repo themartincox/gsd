@@ -1,0 +1,10 @@
+{
+  "name": "satellite-tracker-3d",
+  "version": "1.0.0",
+  "description": "3D satellite tracker — CesiumJS + satellite.js + CelesTrak",
+  "scripts": {
+    "start": "npx --yes serve . -l 8080 --no-clipboard",
+    "dev":   "npx --yes serve . -l 8080"
+  },
+  "private": true
+}
